@@ -11,7 +11,6 @@ The pre-editor learns to **protect object-relevant information** while simplifyi
 
 > 📄 **Paper:** Proceedings link will be added once available.  
 > 🧠 **Pretrained weights (full model + ablations):** [Google Drive](https://drive.google.com/drive/folders/1YbB1M0Bdp1QZl-aoGNWCCsJRMgzROGES?usp=sharing)  
-> 💻 **Code:** [SilviaDani/SCOPE](https://github.com/SilviaDani/SCOPE)
 
 ## ✨ Highlights
 
