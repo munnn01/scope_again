@@ -333,6 +333,7 @@ def main():
         "scope_ckpt",
         "architecture",
         "condition_mode",
+        "conditioning_mode",
         "base_ch",
         "family_emb_dim",
         "cond_dim",

@@ -1,13 +1,13 @@
 # Đối Chiếu Thông Số Bài Báo SCOPE (ACCV 2026) & Kho Mã Nguồn
 
-Tài liệu này đối chiếu toàn diện từng phương trình toán học, kiến trúc mạng, số lượng tham số, hàm mất mát, phép chuẩn hóa mức độ nén (`severity`) và trọng số huấn luyện giữa:
-1. **Bài báo gốc**: *SCOPE: Semantic COdec Pre-Editing for Object-Preserving Compression* — Silvia Dani, Leonardo Galteri, Marco Bertini (`ACCV 2026`, `arXiv:2610.39778v1`).
+Tài liệu này đối chiếu toàn diện từng phương trình toán học, kiến trúc mạng, số lượng tham số, hàm mất mát, phép chuẩn hóa mức độ nén (`severity`), kịch bản đánh giá/đo thời gian và toàn bộ **11/11 trọng số chính thức** giữa:
+1. **Bài báo gốc & Phụ lục (Supplementary)**: *SCOPE: Semantic COdec Pre-Editing for Object-Preserving Compression* — Silvia Dani, Leonardo Galteri, Marco Bertini (`ACCV 2026`, `arXiv:2610.39778v1`).
 2. **Trọng số chính thức trên Google Drive của nhóm tác giả** (`FULL` + 10 mô hình ablation tại `1YbB1M0Bdp1QZl-aoGNWCCsJRMgzROGES`).
-3. **Kho mã nguồn gốc `miccunifi/SCOPE`** (`commit 453a40b`) và **các điểm lệch thông số đã được chuẩn hóa trong kho này (`munnn01/scope_again`)**.
+3. **Kho mã nguồn gốc `miccunifi/SCOPE`** (`commit 453a40b`) và **các điểm lệch thông số / lỗi thực thi đã được chuẩn hóa trong kho này (`munnn01/scope_again`)**.
 
 ---
 
-## 1. Kiến trúc Mạng & Số Lượng Tham Số (Section 3.1 & Table 3)
+## 1. Kiến Trúc Mạng & Toàn Bộ 11/11 Checkpoint Chính Thức (Section 3.1, Fig. 5 & Table 3)
 
 | Thành phần | Bài báo (`arXiv:2610.39778v1`) | Checkpoint chính thức (`FULL/best_val.pt`) | `miccunifi/SCOPE` gốc (`scope/model.py`) | Trạng thái sau chuẩn hóa |
 |:--|:--|:--|:--|:--|
@@ -17,9 +17,19 @@ Tài liệu này đối chiếu toàn diện từng phương trình toán học,
 | MLP điều kiện (Eq. 3) | $\mathrm{MLP}([e_f, \phi(s)]) \in \mathbb{R}^{64}$ | `Linear(14, 64) -> GELU -> Linear(64, 64) -> GELU` | `cond_dim = 64` | **Khớp 100%** |
 | U-Net đa tỷ lệ & FiLM (Eq. 4) | $H \times W$ (`48`), $H/2$ (`96`), $H/4$ (`192`), Bilinear upsample + Conv $3\times 3$, skip concat, $\mathrm{FiLM}(x, c) = x \odot (1 + \gamma(c)) + \beta(c)$ | `base_ch = 48`, khởi tạo FiLM đồng nhất ($\gamma=0, \beta=0$) | Khớp | **Khớp 100%** |
 | Biên độ dư tối đa (Sec. 3.2) | $\|\Delta_{\mathrm{obj}}\|_\infty \le 0.09$, $\|\Delta_{\mathrm{bg}}\|_\infty \le 0.03$ | `max_delta_obj = 0.09`, `max_delta_bg = 0.03` (`tanh`) | Khớp | **Khớp 100%** |
-| Nhánh nền làm mờ (Eq. 7 & Sec. 3.2) | $I_{\mathrm{bg}} = \mathrm{clip}(\mathrm{Blur}(I) + \Delta_{\mathrm{bg}}, 0, 1)$ | `bg_mode = "blur_replace"`, `bg_blur_kernel = 51`, `attention_bias = -4.0` | **Lệch mặc định trong `SCOPE.__init__`**: để cũ `bg_mode="residual"`, `bg_blur_kernel=41`, `attention_bias=-3.0` | **Đã sửa mặc định `SCOPE.__init__` sang `blur_replace`, `51`, `-4.0`** |
-| **Tổng tham số `FULL` (`family + severity`)** | Mô hình chính Table 3 (`−15.98% BDBR`) | **`1,879,119`** tham số | `1,879,119` | **Khớp bit-exact (`1,879,119`)** |
-| **Ablation Table 3 (`Family`, `Severity`, `Per-codec`)** | 4 chế độ điều kiện trong Table 3 | `FAMILYONLY`: **`1,878,735`**<br>`SEVERITYONLY`: **`1,878,583`**<br>`UNCONDITIONED`: **`1,742,935`** | **Thiếu trong `scope/model.py` & `scope/inference.py`** (không load/train được 8/11 checkpoint ablation trên Drive) | **Đã bổ sung đầy đủ `conditioning_mode` (`family_severity`, `codec_family_only`, `severity_only`, `none`) khớp `strict=True` cả 11/11 checkpoint** |
+| Nhánh nền làm mờ (Eq. 7 & Sec. 3.2) | $I_{\mathrm{bg}} = \mathrm{clip}(\mathrm{Blur}(I) + \Delta_{\mathrm{bg}}, 0, 1)$ | `bg_mode = "blur_replace"`, `bg_blur_kernel = 51`, `attention_bias = -4.0` ($\sigma(-4) \approx 0.018$) | **Lệch mặc định trong `SCOPE.__init__`**: để cũ `bg_mode="residual"`, `bg_blur_kernel=41`, `attention_bias=-3.0` | **Đã sửa mặc định `SCOPE.__init__` sang `blur_replace`, `51`, `-4.0`** |
+
+### Bảng kiểm chứng thực tế cả 11/11 Checkpoint trên Google Drive (`load_scope_model(..., strict=True)`)
+
+| Nhóm trong bài báo | Tên mô hình / Checkpoint trên Drive | `conditioning_mode` | `codec_family_to_id` | Số tham số | Trạng thái nạp `strict=True` |
+|:--|:--|:--|:--|--:|:--|
+| **SCOPE (Full)** — Table 3 (`−15.98%` BDBR) | `..._FULL_20260701_140557/best_val.pt` | `family_severity` | `{diff_jpeg:0, bmshj:1, bpg_like:2}` | **`1,879,119`** | **OK** |
+| **w/o bg/rate** — Fig. 5 ($\lambda_{\mathrm{bg\_flat}}=\lambda_{\mathrm{bg\_smooth}}=\lambda_{\mathrm{rate}}=0$) | `..._NOBG_20260702_220324/best_val.pt` | `family_severity` | `{diff_jpeg:0, bmshj:1, bpg_like:2}` | **`1,879,119`** | **OK** |
+| **w/o task** — Fig. 5 ($\lambda_{\mathrm{det}}=0$) | `..._NODET_20260702_164808/best_val.pt` | `family_severity` | `{diff_jpeg:0, bmshj:1, bpg_like:2}` | **`1,879,119`** | **OK** |
+| **Family** — Table 3 (`−15.42%` BDBR) | `..._familyonly_scratch_20260828_165524/best_val.pt` | `codec_family_only` | `{diff_jpeg:0, bmshj:1, bpg_like:2}` | **`1,878,735`** | **OK** |
+| **Severity** — Table 3 (`−13.28%` BDBR) | `..._SEVERITYONLY_scratch_20260829_022023/best_val.pt` | `severity_only` | `{diff_jpeg:0, bmshj:1, bpg_like:2}` | **`1,878,583`** | **OK** |
+| **Per-codec (JPEG / BPG / BMSHJ)** — Table 3 | `..._{JPEG,BPG,BMSHJ}_UNCONDITIONED_scratch_.../best_val.pt` (3 ckpts) | `none` | Đơn codec (`{diff_jpeg:0}` / `{bpg_like:0}` / `{bmshj:0}`) | **`1,742,935`** | **OK (3/3)** |
+| **Per-codec+Sev. (JPEG / BPG / BMSHJ)** — Table 3 | `..._{JPEG,BPG,BMSHJ}_SEVERITYONLY_percodec_scratch_.../best_val.pt` (3 ckpts) | `severity_only` | Đơn codec (`{diff_jpeg:0}` / `{bpg_like:0}` / `{bmshj:0}`) | **`1,878,583`** | **OK (3/3)** |
 
 ---
 
@@ -44,7 +54,7 @@ Trong `miccunifi/SCOPE` gốc, tệp shell `training/train_scope.sh` chứa cấ
 
 ---
 
-## 3. Cấu Hình Đánh Giá & Chuẩn Hóa Mức Độ Nén (Section 4 & `configs/*.yaml`)
+## 3. Đánh Giá Thực Nghiệm, Đo Thời Gian & BDBR (Section 4 & Supplementary Sections 1–2)
 
 Tất cả điểm hoạt động trong `configs/eval.yaml` và `configs/ablation.yaml` khớp chính xác với Section 4 của bài báo (5,000 ảnh `COCO 2017 val2017`, 3 kiến trúc detector: **Faster R-CNN X101-FPN**, **RT-DETR-l**, **YOLO26x**; đo bitrate thực từ luồng bit đã mã hóa; BDBR nội suy PCHIP trên miền AP chung không ngoại suy):
 
@@ -56,13 +66,15 @@ Tất cả điểm hoạt động trong `configs/eval.yaml` và `configs/ablatio
 | **Cheng** | Zero-shot (Unseen) | `bmshj` | $q \in \{1, 2, 3, 4, 5, 6\}$ (`cheng2020-attn`) | $s = 1 - \frac{q - 1}{6 - 1} = \frac{6 - q}{5} \in \{1.000000, \dots, 0.000000\}$ |
 | **JPEG2000** | Zero-shot (Unseen family) | Thử cả 3 họ đã học (`diff_jpeg`, `bmshj`, `bpg_like`) | OpenJPEG `-r` $\in \{32, 48, 64, 96, 128, 192\}$ | $s = \frac{r - 1}{192 - 1} = \frac{r - 1}{191} \in \{0.162304, \dots, 1.000000\}$ |
 
-> **Lưu ý sửa lỗi suy diễn `severity` tự động (`scope/evaluation/conditioning.py`)**: Trong mã gốc, hàm fallback `infer_severity_from_experiment()` (khi YAML không ghi cứng `condition.severity`) dùng dải cũ `JPEG [10, 60]` và `BPG [28, 48]` khiến giá trị `s` bị lệch so với `eval.yaml`. Đã cập nhật về đúng `JPEG [1, 99]` và `BPG [0, 51]` khớp tới 6 chữ số thập phân với toàn bộ 41 cấu hình trong `eval.yaml` và `ablation.yaml`.
+- **Đồng bộ `severity` ở mọi nhánh đánh giá**: Đã chuẩn hóa dải `JPEG [1, 99]` và `BPG [0, 51]` đồng nhất trên cả `scope/evaluation/conditioning.py`, `scope/evaluation/transmission.py` và `scope/evaluation/rate_distortion.py` (`evaluate_categories.py` — Supplementary Sec. 2).
+- **Đo thời gian chuẩn Supplementary Sec. 1 (`evaluation/benchmark_scope.py`)**: `configs/timing.yaml` gồm 3 họ × 5 mức `severity` $\{0.00, 0.25, 0.50, 0.75, 1.00\}$, `--warmup 20` và **`--repeat 1`** mặc định (tổng `75,000` phép đo trên `5,000` ảnh COCO val2017 đúng như Table 1 & Table 2 phần Phụ lục); đồng thời hỗ trợ benchmark cả các checkpoint đơn codec (`Per-codec` / `Per-codec+Sev.`).
+- **Bảng BDBR & LaTeX (`analysis/compute_bdbr.py`)**: Sửa lỗi lệch số cột LaTeX của `interpolated_cheng.tex` và hỗ trợ đầy đủ nhãn phương pháp cho cả Fig. 5 (`full`, `no_task`, `no_bg`) lẫn Table 3 (`family`, `severity`, `per_codec`, `per_codec_sev`).
 
 ---
 
-## 4. Các Cải Tiến Tương Thích Google Colab & Kiểm Định Tự Động
+## 4. Tương Thích Google Colab & Công Cụ Kiểm Định Tự Động
 
-1. **An toàn AMP (`float16`) cho `Diff-JPEG` (`scope/codecs.py`)**: Bọc `_call_diffjpeg` trong `torch.amp.autocast("cuda", enabled=False)` ở `float32` giống `_call_bmshj`, tránh tràn số DCT và xung đột kiểu tensor `Half`/`Float` khi bật `--amp` trên GPU Colab (T4/L4/A100).
+1. **An toàn AMP (`float16`) cho `Diff-JPEG` (`scope/codecs.py`)**: Bọc `_call_diffjpeg` trong `torch.amp.autocast("cuda", enabled=False)` ở `float32` giống `_call_bmshj` (ngăn lỗi `linalg_inv_out_cuda not implemented for 'Half'` trong `diff_jpeg/color.py` khi bật `--amp` trên GPU Colab).
 2. **Tương thích `torch.load(..., weights_only=False)` trên PyTorch 2.6+**: Đồng bộ ở cả `scope/inference.py`, `scope/training.py` và `scope/evaluation/transmission.py`.
-3. **Sửa lỗi `tools/validate_environment.py --mode static`**: Gỡ yêu cầu tệp `environment.yml` không tồn tại trong kho gốc khiến lệnh kiểm tra tĩnh luôn báo `FAIL`.
-4. **Bổ sung `requirements-colab.txt` & `notebooks/SCOPE_Colab.ipynb`**: Giữ nguyên PyTorch CUDA có sẵn của Google Colab, tự động tải checkpoint chính thức từ Google Drive và hỗ trợ chạy kiểm thử, suy luận, đánh giá BDBR hoặc huấn luyện lại từ đầu.
+3. **Sửa lỗi chạy trực tiếp các script `tools/` & kiểm tra `bash` đa nền tảng**: `python tools/check_runtime.py`, `python tools/smoke_real.py`, `python tools/run_full_tests.py` và `python tools/validate_environment.py --mode static` đều chạy trực tiếp sạch sẽ cả trên Linux/Colab lẫn Windows (tự động bỏ qua stub WSL lỗi để dùng Git Bash thực).
+4. **Bổ sung `requirements-colab.txt` & `notebooks/SCOPE_Colab.ipynb`**: Giữ nguyên PyTorch CUDA có sẵn của Google Colab, đính kèm bảng ID tải tự động cả 11/11 checkpoint chính thức từ Google Drive và kiểm chứng sẵn các lệnh CLI.

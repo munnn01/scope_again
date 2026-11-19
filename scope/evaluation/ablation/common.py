@@ -83,6 +83,21 @@ def canonical_method_key(label: str) -> str:
     }:
         return "no_bg"
 
+    if k in {"family", "family_only", "familyonly", "codec_family_only"}:
+        return "family"
+
+    if k in {"severity", "severity_only", "severityonly"}:
+        return "severity"
+
+    if k in {"per_codec", "per-codec", "percodec", "unconditioned", "none"}:
+        return "per_codec"
+
+    if k in {
+        "per_codec_sev", "per-codec+sev", "per-codec+sev.",
+        "per_codec_severity", "percodec_sev", "percodec_severity",
+    }:
+        return "per_codec_sev"
+
     return k or "unknown"
 
 
@@ -129,6 +144,10 @@ def pretty_method(label: str) -> str:
         "full": "SCOPE",
         "no_task": "w/o task",
         "no_bg": "w/o bg/rate",
+        "family": "Family",
+        "severity": "Severity",
+        "per_codec": "Per-codec",
+        "per_codec_sev": "Per-codec+Sev.",
         "baseline": "Baseline",
     }
     return aliases.get(key, str(label).strip().replace("_", " "))

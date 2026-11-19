@@ -11,7 +11,11 @@ from pathlib import Path
 
 import yaml
 
-from .validate_environment import PROJECT_ROOT, resolve_local_path
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tools.validate_environment import PROJECT_ROOT, resolve_local_path
+else:
+    from .validate_environment import PROJECT_ROOT, resolve_local_path
 
 
 def prepare_subset(config_path: Path, experiment_names: list[str], limit: int, tmp: Path,
@@ -57,16 +61,19 @@ def prepare_subset(config_path: Path, experiment_names: list[str], limit: int, t
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Real compression + detector + COCO smoke test (subset metrics are not publishable).")
     parser.add_argument("--config", type=Path, default=Path("configs/eval.yaml"))
-    parser.add_argument("--experiments", nargs="+", required=True, help="Exact experiment names in the YAML file.")
-    parser.add_argument("--images", type=int, default=2)
+    parser.add_argument("--experiments", nargs="+", required=True, help="Exact experiment names in the YAML file (space- or comma-separated).")
+    parser.add_argument("--images", "--limit", dest="images", type=int, default=2)
     parser.add_argument("--output-dir", type=Path, default=Path("outputs_scope_smoke"))
     args = parser.parse_args(argv)
     if args.images <= 0:
         parser.error("--images must be positive")
+    experiment_names = [name.strip() for raw in args.experiments for name in raw.split(",") if name.strip()]
+    if not experiment_names:
+        parser.error("--experiments must specify at least one experiment")
     config = resolve_local_path(args.config)
     destination = resolve_local_path(args.output_dir)
     with tempfile.TemporaryDirectory(prefix="scope_real_smoke_") as tmp:
-        smoke_cfg = prepare_subset(config, args.experiments, args.images, Path(tmp), destination)
+        smoke_cfg = prepare_subset(config, experiment_names, args.images, Path(tmp), destination)
         result = subprocess.run([sys.executable, "-m", "scope.evaluation.evaluate", "--config", str(smoke_cfg)],
                                 cwd=PROJECT_ROOT)
     if result.returncode == 0:

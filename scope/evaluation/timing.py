@@ -154,6 +154,7 @@ def merge_experiment_config(cfg: Dict[str, Any], exp_cfg: Dict[str, Any]) -> Dic
         "scope_ckpt",
         "architecture",
         "condition_mode",
+        "conditioning_mode",
         "base_ch",
         "family_emb_dim",
         "cond_dim",
@@ -303,7 +304,7 @@ def benchmark_experiment(
     condition_severity = get_experiment_severity(exp_cfg)
     severity_bin = severity_group(condition_severity, severity_bin_size)
 
-    if condition_family not in codec_family_to_id:
+    if model.uses_family_conditioning and condition_family not in codec_family_to_id:
         raise ValueError(
             f"{exp_name}: condition family {condition_family!r} is not in checkpoint mapping "
             f"{codec_family_to_id}. Use diff_jpeg, bmshj, or bpg_like."
@@ -420,8 +421,8 @@ def main() -> None:
     parser.add_argument(
         "--repeat",
         type=int,
-        default=5,
-        help="Repeated timing passes per image.",
+        default=1,
+        help="Repeated timing passes per image (paper supplementary uses 1).",
     )
     parser.add_argument(
         "--experiments",

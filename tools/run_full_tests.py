@@ -28,6 +28,11 @@ def main(argv=None):
     parser.add_argument("--check-images", type=int, default=20, metavar="N", help="Number of COCO image files to check; -1 for all.")
     args = parser.parse_args(argv)
     env = dict(os.environ, OMP_NUM_THREADS=os.environ.get("OMP_NUM_THREADS", "2"), MKL_NUM_THREADS=os.environ.get("MKL_NUM_THREADS", "2"))
+    if os.name == "nt":
+        bash_bin = validate_environment.find_bash_executable(validate_environment.PROJECT_ROOT)
+        if bash_bin:
+            from pathlib import Path
+            env["PATH"] = str(Path(bash_bin).parent) + os.pathsep + env.get("PATH", "")
     result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"], env=env, cwd=validate_environment.PROJECT_ROOT)
     failures = int(result.returncode != 0)
     findings = audit()

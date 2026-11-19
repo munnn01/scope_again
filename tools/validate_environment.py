@@ -110,6 +110,42 @@ def find_executable(value: str, root: Path = PROJECT_ROOT) -> str | None:
     return None
 
 
+def _is_working_bash(candidate: str | Path) -> bool:
+    try:
+        res = subprocess.run([str(candidate), "-c", "true"], capture_output=True, timeout=5)
+        return res.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def find_bash_executable(root: Path = PROJECT_ROOT) -> str | None:
+    located = find_executable("bash", root)
+    if located and _is_working_bash(located):
+        return located
+    if os.name == "nt":
+        candidates: list[Path] = []
+        for entry in os.environ.get("PATH", "").split(os.pathsep):
+            if entry:
+                candidates.append(Path(entry) / "bash.exe")
+        for env_key in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LocalAppData"):
+            base = os.environ.get(env_key)
+            if base:
+                candidates.extend([
+                    Path(base) / "Git/bin/bash.exe",
+                    Path(base) / "Git/usr/bin/bash.exe",
+                    Path(base) / "Programs/Git/bin/bash.exe",
+                ])
+        seen_paths: set[str] = set()
+        for candidate in candidates:
+            key = os.path.normcase(str(candidate))
+            if key in seen_paths:
+                continue
+            seen_paths.add(key)
+            if candidate.is_file() and _is_working_bash(candidate):
+                return str(candidate)
+    return None
+
+
 def check_executable(report: Reporter, label: str, value: str) -> None:
     located = find_executable(value, report.root)
     if located:
@@ -140,10 +176,11 @@ def check_structure(report: Reporter) -> None:
 
     shell = report.root / "training/train_scope.sh"
     if shell.is_file():
-        if not find_executable("bash", report.root):
+        bash_bin = find_bash_executable(report.root)
+        if not bash_bin:
             report.fail("bash", "bash not found")
         else:
-            result = subprocess.run(["bash", "-n", str(shell)], capture_output=True, text=True)
+            result = subprocess.run([bash_bin, "-n", str(shell)], capture_output=True, text=True)
             (report.ok if result.returncode == 0 else report.fail)(
                 "training-shell-syntax", "valid" if result.returncode == 0 else result.stderr.strip()
             )

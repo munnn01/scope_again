@@ -233,7 +233,7 @@ class SCOPE(nn.Module):
         nn.init.normal_(self.delta_bg_head.weight, mean=0.0, std=1e-4)
         nn.init.zeros_(self.delta_bg_head.bias)
 
-        # sigmoid(-3) ~= 0.047
+        # sigmoid(-4.0) ~= 0.018
         nn.init.normal_(self.attn_head.weight, mean=0.0, std=1e-4)
         nn.init.constant_(self.attn_head.bias, float(attention_bias))
 

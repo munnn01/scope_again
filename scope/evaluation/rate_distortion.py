@@ -325,12 +325,12 @@ def normalized_severity_from_raw(codec: str, raw_level: Optional[float]) -> Tupl
     raw = float(raw_level)
 
     if codec == "jpeg":
-        q_min, q_max = 10.0, 60.0
+        q_min, q_max = 1.0, 99.0
         sev = 1.0 - (raw - q_min) / max(q_max - q_min, 1e-6)
         return float(np.clip(sev, 0.0, 1.0)), "filename_jpeg_quality"
 
     if codec == "bpg":
-        qp_min, qp_max = 28.0, 48.0
+        qp_min, qp_max = 0.0, 51.0
         sev = (raw - qp_min) / max(qp_max - qp_min, 1e-6)
         return float(np.clip(sev, 0.0, 1.0)), "filename_bpg_qp"
 

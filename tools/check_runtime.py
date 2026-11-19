@@ -11,8 +11,13 @@ from typing import Any
 
 import yaml
 
-from .audit_code import ROOT, module_index
-from .validate_environment import DEFAULT_CONFIGS, SCOPE_MODES, resolve_local_path
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tools.audit_code import ROOT, module_index
+    from tools.validate_environment import DEFAULT_CONFIGS, SCOPE_MODES, resolve_local_path
+else:
+    from .audit_code import ROOT, module_index
+    from .validate_environment import DEFAULT_CONFIGS, SCOPE_MODES, resolve_local_path
 
 ENTRYPOINTS = (
     "training/train_scope.py",
@@ -109,7 +114,7 @@ def audit_checkpoints(paths: list[Path], *, root: Path = ROOT) -> tuple[int, int
                     print(f"[FAIL] {config.name}/{exp['name']}: missing {checkpoint}")
                     failures += 1
                     continue
-                settings = {k: exp[k] for k in ("base_ch", "family_emb_dim", "cond_dim", "bg_mode", "max_delta_obj", "max_delta_bg", "bg_blur_kernel", "bg_lowres_scale", "attention_bias") if k in exp}
+                settings = {k: exp[k] for k in ("base_ch", "family_emb_dim", "cond_dim", "bg_mode", "max_delta_obj", "max_delta_bg", "bg_blur_kernel", "bg_lowres_scale", "attention_bias", "conditioning_mode") if k in exp}
                 key = (str(checkpoint), json.dumps(settings, sort_keys=True))
                 if key not in seen:
                     model, mapping = load_scope_model(str(checkpoint), torch.device("cpu"), exp)

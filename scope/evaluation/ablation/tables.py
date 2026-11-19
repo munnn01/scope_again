@@ -118,7 +118,7 @@ def write_latex_interpolated_tables(
                 ]
                 values.extend(
                     format_number(row.get(method), metric_digits)
-                    for method in methods
+                    for method in codec_methods
                 )
                 lines.append(" & ".join(values) + r" \\")
 

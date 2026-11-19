@@ -265,5 +265,187 @@ class ConditioningModesAndEdgeCaseTests(unittest.TestCase):
                 apply_scope_bgr(img, str(ckpt), "unknown_codec", 0.5, "cpu")
 
 
+class EvaluationToolsAndColabWorkflowTests(unittest.TestCase):
+    def test_rate_distortion_severity_matches_eval_conditioning(self):
+        from scope.evaluation.rate_distortion import normalized_severity_from_raw
+
+        for cfg_name, mode_to_codec, param_key in (
+            ("eval.yaml", {"scope_jpeg": "jpeg", "scope_bpg": "bpg"}, None),
+            ("ablation.yaml", {"scope_jpeg2000": "jpeg2000"}, "jp2_rate"),
+        ):
+            cfg = yaml.safe_load((ROOT / "configs" / cfg_name).read_text(encoding="utf-8"))
+            for exp in cfg["experiments"]:
+                mode = exp["mode"]
+                codec = mode_to_codec.get(mode)
+                if codec is None and mode == "scope_compressai":
+                    codec = "cheng" if "cheng" in exp["compressai_model"] else "bmshj"
+                if codec is None:
+                    continue
+                if codec == "jpeg":
+                    raw = exp["jpeg_quality"]
+                elif codec == "bpg":
+                    raw = exp["bpg_qp"]
+                elif codec in {"bmshj", "cheng"}:
+                    raw = exp["compressai_quality"]
+                else:
+                    raw = exp[param_key]
+                sev, _ = normalized_severity_from_raw(codec, raw)
+                with self.subTest(exp=exp["name"]):
+                    self.assertAlmostEqual(float(sev), float(exp["condition"]["severity"]), places=5)
+
+    def test_timing_supports_per_codec_specialists_and_paper_defaults(self):
+        import cv2
+        import json
+        import sys
+        from unittest.mock import patch
+        from scope.evaluation import timing as timing_mod
+        from scope.evaluation.dataset import CocoDataset
+
+        # Verify CLI defaults match Supplementary Sec. 1 (warmup=20, repeat=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "imgs").mkdir()
+            cv2.imwrite(str(root / "imgs/1.png"), np.zeros((32, 32, 3), dtype=np.uint8))
+            (root / "gt.json").write_text(json.dumps({
+                "images": [{"id": 1, "file_name": "1.png", "width": 32, "height": 32}],
+                "annotations": [],
+            }))
+            dataset = CocoDataset(str(root / "imgs"), str(root / "gt.json"))
+
+            for mode in ("none", "severity_only"):
+                ckpt = root / f"specialist_{mode}.pt"
+                specialist = SCOPE(num_codec_families=1, base_ch=8, conditioning_mode=mode).eval()
+                torch.save({
+                    "model": specialist.state_dict(),
+                    "codec_family_to_id": {"diff_jpeg": 0},
+                    "conditioning_mode": mode,
+                    "base_ch": 8,
+                }, ckpt)
+                exp = {
+                    "name": f"time_bpg_{mode}",
+                    "mode": "scope_bpg",
+                    "codec_family": "intra_smooth",
+                    "scope_ckpt": str(ckpt),
+                    "base_ch": 8,
+                    "condition": {"severity": 0.5},
+                }
+                rows, summary = timing_mod.benchmark_experiment(
+                    exp, dataset, root / "out", "cpu",
+                    limit=1, warmup=0, repeat=1,
+                    save_outputs=False, max_saved_outputs=0, severity_bin_size=None,
+                )
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(summary["num_measurements"], 1)
+
+            cfg_file = root / "timing_min.yaml"
+            cfg_file.write_text(yaml.safe_dump({
+                "output_dir": str(root / "timing_cli_out"),
+                "device": "cpu",
+                "dataset": {"images_dir": str(root / "imgs"), "annotations_json": str(root / "gt.json")},
+                "experiments": [{
+                    "name": "time_one",
+                    "mode": "scope_jpeg",
+                    "codec_family": "block_dct",
+                    "scope_ckpt": str(root / "specialist_none.pt"),
+                    "base_ch": 8,
+                    "condition": {"severity": 0.25},
+                }],
+            }))
+            with patch.object(sys, "argv", ["benchmark_scope.py", "--config", str(cfg_file)]):
+                timing_mod.main()
+            summary_json = json.loads(
+                (root / "timing_cli_out/scope_timing_by_family_severity/time_one/scope_timing_summary.json").read_text()
+            )
+            self.assertEqual(summary_json["num_measurements"], 1)
+
+    def test_cheng_latex_table_columns_and_table3_method_aliases(self):
+        from scope.evaluation.ablation.common import canonical_method_key, pretty_method
+        from scope.evaluation.ablation.tables import write_latex_interpolated_tables
+
+        self.assertEqual(canonical_method_key("codec_family_only"), "family")
+        self.assertEqual(pretty_method("family_only"), "Family")
+        self.assertEqual(canonical_method_key("severity_only"), "severity")
+        self.assertEqual(pretty_method("severity"), "Severity")
+        self.assertEqual(canonical_method_key("unconditioned"), "per_codec")
+        self.assertEqual(pretty_method("per_codec"), "Per-codec")
+        self.assertEqual(canonical_method_key("per-codec+sev."), "per_codec_sev")
+        self.assertEqual(pretty_method("per_codec_sev"), "Per-codec+Sev.")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            write_latex_interpolated_tables(
+                table_rows=[{
+                    "codec": "cheng", "detector": "YOLO", "point_index": 0,
+                    "dataset_bpp": 0.2, "baseline": 0.3, "full": 0.35,
+                }],
+                codecs=["cheng"],
+                methods=["full", "no_task", "no_bg"],
+                x_key="dataset_bpp",
+                out_dir=out_dir,
+                rate_digits=4,
+                metric_digits=4,
+            )
+            tex = (out_dir / "interpolated_cheng.tex").read_text(encoding="utf-8")
+            self.assertIn(r"\begin{tabular}{llrr}", tex)
+            data_lines = [ln for ln in tex.splitlines() if ln.strip().startswith("YOLO &")]
+            self.assertEqual(len(data_lines), 1)
+            # 4 columns => exactly 3 '&' separators
+            self.assertEqual(data_lines[0].count("&"), 3, data_lines[0])
+
+    def test_direct_tools_scripts_and_colab_notebook_commands(self):
+        import json
+        import re
+        import subprocess
+        import sys
+        from unittest.mock import patch
+        from tools import smoke_real, validate_environment
+
+        # 1) Direct script execution (not just -m) must work for tools/*.py
+        for script in ("tools/check_runtime.py", "tools/smoke_real.py", "tools/validate_environment.py"):
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / script), "--help"],
+                cwd=ROOT, capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(proc.returncode, 0, f"{script} failed: {proc.stderr}")
+
+        # 2) validate_environment --mode static must pass with 0 failures
+        rc = validate_environment.main(["--mode", "static"])
+        self.assertEqual(rc, 0)
+
+        # 3) smoke_real CLI supports both --images/--limit and space/comma --experiments
+        captured = {}
+
+        def fake_prepare(config_path, exp_names, limit, tmp, dest, root=ROOT):
+            captured["exp_names"] = exp_names
+            captured["limit"] = limit
+            return tmp / "dummy.yaml"
+
+        class DummyResult:
+            returncode = 0
+
+        with patch.object(smoke_real, "prepare_subset", side_effect=fake_prepare), \
+             patch.object(smoke_real.subprocess, "run", return_value=DummyResult()):
+            rc = smoke_real.main([
+                "--config", "configs/eval.yaml",
+                "--limit", "20",
+                "--experiments", "jpeg_q10,scope_jpeg_q10", "bmshj_q1",
+            ])
+        self.assertEqual(rc, 0)
+        self.assertEqual(captured["limit"], 20)
+        self.assertEqual(captured["exp_names"], ["jpeg_q10", "scope_jpeg_q10", "bmshj_q1"])
+
+        # 4) Validate notebooks/SCOPE_Colab.ipynb JSON and referenced repo scripts
+        nb = json.loads((ROOT / "notebooks/SCOPE_Colab.ipynb").read_text(encoding="utf-8"))
+        self.assertEqual(nb["nbformat"], 4)
+        cmd_pat = re.compile(r"!\s*(?:python|bash)\s+((?:training|evaluation|analysis|tools)/[\w./-]+\.(?:py|sh))")
+        found_cmds = []
+        for cell in nb["cells"]:
+            text = "".join(cell.get("source", []))
+            for rel_script in cmd_pat.findall(text):
+                self.assertTrue((ROOT / rel_script).is_file(), f"Missing Colab script: {rel_script}")
+                found_cmds.append(rel_script)
+        self.assertGreaterEqual(len(found_cmds), 4)
+
+
 if __name__ == "__main__":
     unittest.main()

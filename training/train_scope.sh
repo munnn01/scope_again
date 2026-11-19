@@ -26,7 +26,13 @@ D2_WEIGHTS="${D2_WEIGHTS:-}"
 SEVERITY_LEVELS="${SEVERITY_LEVELS:-0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0}"
 VAL_SEVERITY_LEVELS="${VAL_SEVERITY_LEVELS:-0.0,0.2,0.4,0.6,0.8,1.0}"
 
-CODEC_FAMILY_PROBS="${CODEC_FAMILY_PROBS:-diff_jpeg:0.333333,bmshj:0.333333,bpg_like:0.333334}"
+CODEC_FAMILIES="${CODEC_FAMILIES:-diff_jpeg,bmshj,bpg_like}"
+if [[ "${CODEC_FAMILIES}" == "diff_jpeg,bmshj,bpg_like" ]]; then
+  CODEC_FAMILY_PROBS="${CODEC_FAMILY_PROBS:-diff_jpeg:0.333333,bmshj:0.333333,bpg_like:0.333334}"
+else
+  CODEC_FAMILY_PROBS="${CODEC_FAMILY_PROBS:-}"
+fi
+CONDITIONING_MODE="${CONDITIONING_MODE:-family_severity}"
 BPG_PROXY_MODE="${BPG_PROXY_MODE:-medium}"
 BATCH="${BATCH:-8}"
 LR="${LR:-1e-4}"
@@ -47,7 +53,8 @@ echo "Detectron2 cfg:     ${D2_CONFIG}"
 echo "Detectron2 weights: ${D2_WEIGHTS:-model-zoo}"
 echo "Output dir:         ${OUT_DIR}"
 echo "CUDA devices:       ${CUDA_VISIBLE_DEVICES}"
-echo "Codec families:     diff_jpeg,bmshj,bpg_like"
+echo "Codec families:     ${CODEC_FAMILIES}"
+echo "Conditioning mode:  ${CONDITIONING_MODE}"
 echo "Family probs:       ${CODEC_FAMILY_PROBS}"
 echo "Severity levels:    ${SEVERITY_LEVELS}"
 echo "Val severities:     ${VAL_SEVERITY_LEVELS}"
@@ -78,8 +85,9 @@ python "${TRAIN_SCRIPT}" \
   --val-annotations-json "${VAL_JSON}" \
   --output-dir "${OUT_DIR}" \
   \
-  --codec-families diff_jpeg,bmshj,bpg_like \
+  --codec-families "${CODEC_FAMILIES}" \
   --codec-family-probs "${CODEC_FAMILY_PROBS}" \
+  --conditioning-mode "${CONDITIONING_MODE}" \
   \
   --use-real-diffjpeg \
   --diffjpeg-quality-min 1 \

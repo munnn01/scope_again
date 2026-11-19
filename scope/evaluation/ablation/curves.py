@@ -62,6 +62,10 @@ def method_order(
         "full": 0,
         "no_task": 1,
         "no_bg": 2,
+        "family": 3,
+        "severity": 4,
+        "per_codec": 5,
+        "per_codec_sev": 6,
     }
 
     return [
