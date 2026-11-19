@@ -116,15 +116,18 @@ Full model/data checks are described in [✅ Testing](TESTING.md).
 
 ### Install Python dependencies from `requirements.txt`
 
-Use **Python 3.10** with a compatible NVIDIA driver. All regular Python dependencies (including PyTorch, Ultralytics, CompressAI and Diff-JPEG) are specified in the single `requirements.txt` file:
+Use **Python 3.10** with a compatible NVIDIA driver for standalone Linux reproduction (`requirements.txt`), or `requirements-colab.txt` + `pip install --no-deps compressai==1.2.8` on Google Colab / Colab+:
 
 ```bash
-git clone https://github.com/SilviaDani/SCOPE.git
-cd SCOPE
+git clone https://github.com/munnn01/scope_again.git
+cd scope_again
 python3.10 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
+
+# On Google Colab / Colab+ (preserve preinstalled CUDA PyTorch & NumPy 2.x ABI):
+# pip install -r requirements-colab.txt && pip install --no-deps compressai==1.2.8
 ```
 
 To use Conda only as the environment manager, replace the `venv` creation/activation with `conda create -n d2_scope python=3.10 -y` and `conda activate d2_scope`; still install Python dependencies with `pip install -r requirements.txt`. The requirements pin PyTorch 2.4.1 / TorchVision 0.19.1 and point to the **CUDA 12.1 wheel index** used for the original experiments. Adapt that index to your local CUDA/driver setup if necessary.

@@ -26,15 +26,18 @@ Strict checks validate module imports, direct CLI paths, each selected model's c
 
 ## 📦 1. Install Python dependencies
 
-Use Python 3.10 on Linux with a compatible NVIDIA driver. **`requirements.txt` is the only Python dependency manifest**. It includes PyTorch, torchvision, Ultralytics, CompressAI, Diff-JPEG and the scientific packages needed by the pipeline.
+Use Python 3.10 on Linux with a compatible NVIDIA driver for standalone reproduction (`requirements.txt`), or `requirements-colab.txt` + `pip install --no-deps compressai==1.2.8` on Google Colab / Colab+ to keep Colab's preinstalled CUDA PyTorch/TorchVision and NumPy 2.x ABI intact.
 
 ```bash
-git clone https://github.com/SilviaDani/SCOPE.git
-cd SCOPE
+git clone https://github.com/munnn01/scope_again.git
+cd scope_again
 python3.10 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
+
+# On Google Colab / Colab+ instead of creating a venv / requirements.txt:
+# pip install -r requirements-colab.txt && pip install --no-deps compressai==1.2.8
 
 # Build Detectron2 against the installed PyTorch/CUDA stack
 pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'

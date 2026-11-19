@@ -439,12 +439,69 @@ class EvaluationToolsAndColabWorkflowTests(unittest.TestCase):
         self.assertEqual(nb["nbformat"], 4)
         cmd_pat = re.compile(r"!\s*(?:python|bash)\s+((?:training|evaluation|analysis|tools)/[\w./-]+\.(?:py|sh))")
         found_cmds = []
+        nb_full_source = "\n".join("".join(cell.get("source", [])) for cell in nb["cells"])
         for cell in nb["cells"]:
             text = "".join(cell.get("source", []))
             for rel_script in cmd_pat.findall(text):
                 self.assertTrue((ROOT / rel_script).is_file(), f"Missing Colab script: {rel_script}")
                 found_cmds.append(rel_script)
         self.assertGreaterEqual(len(found_cmds), 4)
+        self.assertIn("requirements-colab.txt", nb_full_source)
+        self.assertRegex(nb_full_source, r"pip\s+install[^\n]*--no-deps\s+compressai==1\.2\.8")
+
+    def test_dependency_manifests_prevent_numpy_and_torch_abi_conflicts(self):
+        import re
+
+        def parse_manifest(rel_path: str) -> tuple[dict[str, str], list[str]]:
+            specs: dict[str, str] = {}
+            git_urls: list[str] = []
+            for raw in (ROOT / rel_path).read_text(encoding="utf-8").splitlines():
+                line = raw.split("#", 1)[0].strip()
+                if not line or line.startswith("--"):
+                    continue
+                if line.startswith("git+"):
+                    git_urls.append(line)
+                    continue
+                match = re.match(r"^([A-Za-z0-9_.-]+)\s*(.*)$", line)
+                self.assertIsNotNone(match, f"Unparseable requirement in {rel_path}: {line!r}")
+                pkg = match.group(1).lower().replace("_", "-")
+                specs[pkg] = match.group(2).replace(" ", "")
+            return specs, git_urls
+
+        # Standalone Python 3.10 + CUDA 12.1 manifest (`requirements.txt`)
+        req, req_git = parse_manifest("requirements.txt")
+        self.assertEqual(req["torch"], "==2.4.1")
+        self.assertEqual(req["torchvision"], "==0.19.1")
+        self.assertEqual(req["compressai"], "==1.2.8")
+        self.assertIn("<2.0", req["numpy"])
+        self.assertIn("<4.12.0", req["opencv-python"])
+        self.assertIn("<1.18.0", req["scipy"])
+        self.assertIn("<3.1.0", req["pandas"])
+        self.assertIn("<0.9.0", req["kornia"])
+        self.assertIn("<0.1.6", req["fvcore"])
+        self.assertIn("<0.1.10", req["iopath"])
+        self.assertIn("<2.4.0", req["omegaconf"])
+        self.assertIn("git+https://github.com/necla-ml/Diff-JPEG.git", req_git)
+
+        # Google Colab+ manifest (`requirements-colab.txt`): preserve CUDA Torch & NumPy 2.x ABI
+        colab, colab_git = parse_manifest("requirements-colab.txt")
+        for preinstalled_torch in ("torch", "torchvision", "torchaudio"):
+            self.assertNotIn(preinstalled_torch, colab)
+        self.assertIn(">=2.0.0", colab["numpy"])
+        self.assertNotIn("compressai", colab)
+        for compressai_dep in (
+            "einops", "pybind11", "pytorch-msssim", "setuptools",
+            "tomli", "torch-geometric", "typing-extensions", "wheel",
+        ):
+            self.assertIn(compressai_dep, colab)
+        self.assertIn("<0.1.6", colab["fvcore"])
+        self.assertIn("<0.1.10", colab["iopath"])
+        self.assertIn("<2.4.0", colab["omegaconf"])
+        self.assertIn("git+https://github.com/necla-ml/Diff-JPEG.git", colab_git)
+
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("requirements-colab.txt", readme)
+        self.assertIn("--no-deps compressai==1.2.8", readme)
 
 
 if __name__ == "__main__":

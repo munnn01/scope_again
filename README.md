@@ -102,12 +102,16 @@ SCOPE/
 │   ├── check_runtime.py
 │   └── audit_code.py
 ├── docs/
+│   ├── PAPER_VERIFICATION.md         # Full ACCV 2026 paper & 11-checkpoint audit
 │   ├── PIPELINE.md
 │   ├── TESTING.md
 │   └── images/
 │       ├── scope_architecture.png
 │       └── scope_training_pipeline.png
-└── requirements.txt
+├── notebooks/
+│   └── SCOPE_Colab.ipynb             # Ready-to-run Google Colab / Colab+ notebook
+├── requirements-colab.txt            # Colab+ dependencies (preserves CUDA Torch & NumPy 2.x)
+└── requirements.txt                  # Standalone Python 3.10 + CUDA 12.1 dependencies
 ```
 
 The top-level `training/`, `evaluation/`, and `analysis/` files provide **direct commands**; the reusable implementations remain in the `scope/` Python package. The separate `tests/` and `tools/` folders are optional checks, not required for inference. See the [📖 pipeline reference](docs/PIPELINE.md) for the complete file-by-file breakdown.
@@ -128,8 +132,8 @@ pip install --upgrade pip setuptools wheel
 # All standard Python dependencies, including PyTorch and Diff-JPEG
 pip install -r requirements.txt
 
-# On Google Colab (keep preinstalled CUDA PyTorch/TorchVision):
-# pip install -r requirements-colab.txt
+# On Google Colab / Colab+ (keep preinstalled CUDA PyTorch/TorchVision & NumPy 2.x ABI):
+# pip install -r requirements-colab.txt && pip install --no-deps compressai==1.2.8
 
 # Detectron2: install after PyTorch because it builds native extensions
 pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'
