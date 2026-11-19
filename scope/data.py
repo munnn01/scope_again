@@ -27,8 +27,8 @@ class CocoBoxCropDataset(Dataset):
         images_dir: str | Path,
         annotations_json: str | Path,
         crop_size: int = 512,
-        object_crop_prob: float = 0.90,
-        crop_margin: float = 1.8,
+        object_crop_prob: float = 0.60,
+        crop_margin: float = 4.0,
         min_box_area: float = 4.0,
     ):
         self.images_dir = Path(images_dir)

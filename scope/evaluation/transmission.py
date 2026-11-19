@@ -390,7 +390,7 @@ def load_roi_codec(
         return _ROI_CODEC_CACHE[key]
 
     model = ROICompressionAE(latent_ch=latent_ch, quantize=True)
-    ckpt = torch.load(checkpoint_path, map_location=device_str)
+    ckpt = torch.load(checkpoint_path, map_location=device_str, weights_only=False)
 
     if isinstance(ckpt, dict) and "model" in ckpt:
         model.load_state_dict(ckpt["model"])

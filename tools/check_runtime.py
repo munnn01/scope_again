@@ -119,7 +119,7 @@ def audit_checkpoints(paths: list[Path], *, root: Path = ROOT) -> tuple[int, int
                 else:
                     model, mapping = load_scope_model(str(checkpoint), torch.device("cpu"), exp)
                 family = infer_codec_family_from_experiment(exp)
-                if family not in mapping:
+                if model.uses_family_conditioning and family not in mapping:
                     hint = (
                         " JPEG2000 was unseen by this checkpoint; use "
                         "block_dct, learned, or intra_smooth in the ablation config."

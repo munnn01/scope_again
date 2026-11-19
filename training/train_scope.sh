@@ -7,6 +7,9 @@ export PYTHONUNBUFFERED=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 TRAIN_SCRIPT="${TRAIN_SCRIPT:-${PROJECT_ROOT}/training/train_scope.py}"
+if [[ "${PROJECT_ROOT}" == *\\* && "${TRAIN_SCRIPT}" == "${PROJECT_ROOT}/training/train_scope.py" ]]; then
+  TRAIN_SCRIPT="${PROJECT_ROOT}\\training\\train_scope.py"
+fi
 
 TRAIN_IMAGES="${TRAIN_IMAGES:-${PROJECT_ROOT}/datasets/coco-2017/train/data}"
 TRAIN_JSON="${TRAIN_JSON:-${PROJECT_ROOT}/datasets/coco-2017/train/labels.json}"

@@ -433,7 +433,7 @@ def codec_proxy_single(
     if family_name == "diff_jpeg":
         # Fallback only. Real Diff-JPEG is used when --use-real-diffjpeg is set.
         qmin, qmax = _range_check(
-            _arg_float(proxy_args, "diffjpeg_quality_min", 10),
+            _arg_float(proxy_args, "diffjpeg_quality_min", 1),
             min(_arg_float(proxy_args, "diffjpeg_quality_max", 99), 99),
             "Diff-JPEG quality range",
         )
@@ -514,8 +514,8 @@ def codec_proxy_single(
 
     if family_name == "bpg_like":
         qpmin, qpmax = _range_check(
-            _arg_float(proxy_args, "bpg_qp_min", 28.0),
-            _arg_float(proxy_args, "bpg_qp_max", 48.0),
+            _arg_float(proxy_args, "bpg_qp_min", 0.0),
+            _arg_float(proxy_args, "bpg_qp_max", 51.0),
             "BPG QP range",
         )
         qp = qpmin + s4 * (qpmax - qpmin)
@@ -730,37 +730,43 @@ class RealCodecProxyManager(nn.Module):
         return max(qmin, min(qmax, q))
 
     def _call_diffjpeg(self, x: torch.Tensor, jpeg_quality: int) -> torch.Tensor:
-        # necla-ml/Diff-JPEG requires jpeg_quality to be a torch.Tensor
-        # with one quality value per image in the batch: shape [B].
-        # Our manager usually calls this with B=1, but keep it generic.
-        q_tensor = torch.full(
-            (x.shape[0],),
-            float(jpeg_quality),
-            device=x.device,
-            dtype=x.dtype,
+        # Run Diff-JPEG in fp32 (outside CUDA autocast) to prevent float16 DCT
+        # overflow and buffer dtype mismatches under --amp.
+        amp_off = (
+            torch.amp.autocast("cuda", enabled=False)
+            if x.is_cuda
+            else nullcontext()
         )
+        with amp_off:
+            x32 = x.float().clamp(0.0, 1.0)
+            q_tensor = torch.full(
+                (x32.shape[0],),
+                float(jpeg_quality),
+                device=x32.device,
+                dtype=torch.float32,
+            )
 
-        # Use the module if possible, otherwise the functional API.
-        if self.diff_jpeg_module is not None:
-            mod = self.diff_jpeg_module
-            try:
-                y = mod(image_rgb=x, jpeg_quality=q_tensor)
-            except TypeError:
+            # Use the module if possible, otherwise the functional API.
+            if self.diff_jpeg_module is not None:
+                mod = self.diff_jpeg_module
                 try:
-                    y = mod(x, q_tensor)
+                    y = mod(image_rgb=x32, jpeg_quality=q_tensor)
                 except TypeError:
-                    y = mod(image_rgb=x, jpeg_quality=q_tensor, ste=True)
-            return torch.clamp(y, 0.0, 1.0)
+                    try:
+                        y = mod(x32, q_tensor)
+                    except TypeError:
+                        y = mod(image_rgb=x32, jpeg_quality=q_tensor, ste=True)
+                return torch.clamp(y, 0.0, 1.0).to(dtype=x.dtype)
 
-        if self.diff_jpeg_fn is None:
-            raise RuntimeError("Real Diff-JPEG was requested but no callable was imported.")
+            if self.diff_jpeg_fn is None:
+                raise RuntimeError("Real Diff-JPEG was requested but no callable was imported.")
 
-        try:
-            y = self.diff_jpeg_fn(image_rgb=x, jpeg_quality=q_tensor, ste=True)
-        except TypeError:
-            y = self.diff_jpeg_fn(x, q_tensor, ste=True)
+            try:
+                y = self.diff_jpeg_fn(image_rgb=x32, jpeg_quality=q_tensor, ste=True)
+            except TypeError:
+                y = self.diff_jpeg_fn(x32, q_tensor, ste=True)
 
-        return torch.clamp(y, 0.0, 1.0)
+            return torch.clamp(y, 0.0, 1.0).to(dtype=x.dtype)
 
     def _call_bmshj(self, x: torch.Tensor, quality: int) -> Tuple[torch.Tensor, torch.Tensor]:
         codec = self.bmshj_codecs[str(int(quality))]

@@ -1,0 +1,37 @@
+# SCOPE dependencies for Google Colab
+# Keeps Colab's preinstalled CUDA PyTorch / TorchVision stack intact.
+
+numpy
+scipy
+Pillow
+opencv-python
+pycocotools
+tqdm
+PyYAML
+matplotlib
+pandas
+scikit-image
+
+# Detectors, learned codecs, and training/download utilities
+ultralytics
+compressai
+kornia
+fvcore
+iopath
+omegaconf
+hydra-core
+yacs
+tabulate
+gdown
+
+# Build helpers (for Detectron2 native extensions when training/evaluating Faster R-CNN)
+ninja
+cmake
+cython
+
+# Differentiable JPEG training proxy
+git+https://github.com/necla-ml/Diff-JPEG.git
+
+# Optional (install in a separate cell on Colab when needed):
+# pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'
+# apt-get update && apt-get install -y libopenjp2-tools

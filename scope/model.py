@@ -55,6 +55,43 @@ class ConditionalConvBlock(nn.Module):
         return x
 
 
+class UnconditionedConvBlock(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1)
+        self.act = nn.GELU()
+
+    def forward(self, x: torch.Tensor, cond: torch.Tensor | None = None) -> torch.Tensor:
+        x = self.act(self.conv1(x))
+        x = self.act(self.conv2(x))
+        return x
+
+
+def normalize_conditioning_mode(mode: str | None) -> str:
+    aliases = {
+        None: "family_severity",
+        "": "family_severity",
+        "family_severity": "family_severity",
+        "full": "family_severity",
+        "codec_family_only": "codec_family_only",
+        "family_only": "codec_family_only",
+        "family": "codec_family_only",
+        "severity_only": "severity_only",
+        "severity": "severity_only",
+        "none": "none",
+        "unconditioned": "none",
+    }
+    key = None if mode is None else str(mode).strip().lower()
+    if key not in aliases:
+        raise ValueError(
+            f"Invalid conditioning_mode={mode!r}. "
+            "Expected family_severity, codec_family_only, severity_only, or none."
+        )
+    return aliases[key]
+
+
 class SCOPE(nn.Module):
     """
     Codec-family and severity conditioned image model.
@@ -77,18 +114,29 @@ class SCOPE(nn.Module):
 
     def __init__(
         self,
-        num_codec_families: int,
+        num_codec_families: int = 3,
         base_ch: int = 48,
         family_emb_dim: int = 8,
         cond_dim: int = 64,
         max_delta_obj: float = 0.09,
         max_delta_bg: float = 0.03,
-        attention_bias: float = -3.0,
-        bg_mode: str = "residual",
-        bg_blur_kernel: int = 41,
+        attention_bias: float = -4.0,
+        bg_mode: str = "blur_replace",
+        bg_blur_kernel: int = 51,
         bg_lowres_scale: int = 16,
+        conditioning_mode: str = "family_severity",
     ):
         super().__init__()
+
+        self.conditioning_mode = normalize_conditioning_mode(conditioning_mode)
+        self.uses_family_conditioning = self.conditioning_mode in {
+            "family_severity",
+            "codec_family_only",
+        }
+        self.uses_severity_conditioning = self.conditioning_mode in {
+            "family_severity",
+            "severity_only",
+        }
 
         self.num_codec_families = int(num_codec_families)
         self.max_delta_obj = float(max_delta_obj)
@@ -105,10 +153,13 @@ class SCOPE(nn.Module):
                 f"Expected one of {sorted(valid_bg_modes)}."
             )
 
-        self.family_emb = nn.Embedding(
-            num_embeddings=self.num_codec_families,
-            embedding_dim=family_emb_dim,
-        )
+        if self.uses_family_conditioning:
+            self.family_emb: nn.Embedding | None = nn.Embedding(
+                num_embeddings=self.num_codec_families,
+                embedding_dim=family_emb_dim,
+            )
+        else:
+            self.family_emb = None
 
         # Keep the public condition as a single scalar severity s in [0, 1].
         # Internally expand it to a small fixed basis so the condition MLP can
@@ -117,14 +168,26 @@ class SCOPE(nn.Module):
         # Features: s, s^2, s^3, and three high-severity hinge/gate features.
         self.severity_basis_dim = 6
 
-        self.cond_mlp = nn.Sequential(
-            nn.Linear(family_emb_dim + self.severity_basis_dim, cond_dim),
-            nn.GELU(),
-            nn.Linear(cond_dim, cond_dim),
-            nn.GELU(),
+        cond_in_dim = (
+            (int(family_emb_dim) if self.uses_family_conditioning else 0)
+            + (self.severity_basis_dim if self.uses_severity_conditioning else 0)
         )
+        if cond_in_dim > 0:
+            self.cond_mlp: nn.Sequential | None = nn.Sequential(
+                nn.Linear(cond_in_dim, cond_dim),
+                nn.GELU(),
+                nn.Linear(cond_dim, cond_dim),
+                nn.GELU(),
+            )
+        else:
+            self.cond_mlp = None
 
-        self.enc1 = ConditionalConvBlock(3, base_ch, cond_dim)
+        def _make_conv_block(in_c: int, out_c: int) -> nn.Module:
+            if self.cond_mlp is not None:
+                return ConditionalConvBlock(in_c, out_c, cond_dim)
+            return UnconditionedConvBlock(in_c, out_c)
+
+        self.enc1 = _make_conv_block(3, base_ch)
 
         self.down1 = nn.Conv2d(
             base_ch,
@@ -134,7 +197,7 @@ class SCOPE(nn.Module):
             padding=1,
         )
 
-        self.enc2 = ConditionalConvBlock(base_ch * 2, base_ch * 2, cond_dim)
+        self.enc2 = _make_conv_block(base_ch * 2, base_ch * 2)
 
         self.down2 = nn.Conv2d(
             base_ch * 2,
@@ -144,16 +207,18 @@ class SCOPE(nn.Module):
             padding=1,
         )
 
-        self.mid = ConditionalConvBlock(base_ch * 4, base_ch * 4, cond_dim)
+        self.mid = _make_conv_block(base_ch * 4, base_ch * 4)
 
         # Bilinear upsample + conv is less artifact-prone than ConvTranspose2d.
         self.up2_conv = nn.Conv2d(base_ch * 4, base_ch * 2, kernel_size=3, padding=1)
-        self.dec2 = ConditionalConvBlock(base_ch * 4, base_ch * 2, cond_dim)
+        self.dec2 = _make_conv_block(base_ch * 4, base_ch * 2)
 
         self.up1_conv = nn.Conv2d(base_ch * 2, base_ch, kernel_size=3, padding=1)
-        self.dec1 = ConditionalConvBlock(base_ch * 2, base_ch, cond_dim)
+        self.dec1 = _make_conv_block(base_ch * 2, base_ch)
 
-        self.final_film = FiLM(base_ch, cond_dim)
+        self.final_film: FiLM | None = (
+            FiLM(base_ch, cond_dim) if self.cond_mlp is not None else None
+        )
 
         self.delta_obj_head = nn.Conv2d(base_ch, 3, kernel_size=3, padding=1)
         self.delta_bg_head = nn.Conv2d(base_ch, 3, kernel_size=3, padding=1)
@@ -262,22 +327,32 @@ class SCOPE(nn.Module):
 
     def _make_condition(
         self,
-        severity: torch.Tensor,
-        codec_family: torch.Tensor,
-    ) -> torch.Tensor:
-        codec_family = codec_family.long().view(-1)
+        severity: torch.Tensor | None,
+        codec_family: torch.Tensor | None,
+    ) -> torch.Tensor | None:
+        if self.cond_mlp is None:
+            return None
 
-        family_vec = self.family_emb(codec_family)
-        severity_basis = self._expand_scalar_severity(severity)
-        cond_in = torch.cat([family_vec, severity_basis], dim=1)
-        cond = self.cond_mlp(cond_in)
-        return cond
+        parts = []
+        if self.uses_family_conditioning:
+            if codec_family is None or self.family_emb is None:
+                raise ValueError("codec_family is required when family conditioning is enabled.")
+            family_ids = codec_family.long().view(-1)
+            parts.append(self.family_emb(family_ids))
+
+        if self.uses_severity_conditioning:
+            if severity is None:
+                raise ValueError("severity is required when severity conditioning is enabled.")
+            parts.append(self._expand_scalar_severity(severity))
+
+        cond_in = parts[0] if len(parts) == 1 else torch.cat(parts, dim=1)
+        return self.cond_mlp(cond_in)
 
     def forward(
         self,
         x: torch.Tensor,
-        severity: torch.Tensor,
-        codec_family: torch.Tensor,
+        severity: torch.Tensor | None = None,
+        codec_family: torch.Tensor | None = None,
     ):
         cond = self._make_condition(
             severity=severity,
@@ -302,7 +377,8 @@ class SCOPE(nn.Module):
         u1 = self._match_size(u1, e1)
         d1 = self.dec1(torch.cat([u1, e1], dim=1), cond)
 
-        d1 = self.final_film(d1, cond)
+        if self.final_film is not None:
+            d1 = self.final_film(d1, cond)
 
         delta_obj = self.max_delta_obj * torch.tanh(self.delta_obj_head(d1))
         delta_bg_residual = self.max_delta_bg * torch.tanh(self.delta_bg_head(d1))

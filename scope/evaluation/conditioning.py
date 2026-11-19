@@ -69,7 +69,9 @@ def infer_severity_from_experiment(exp_cfg: Dict) -> float:
 
     if mode in {"uniform", "jpeg", "scope_jpeg"}:
         q = float(exp_cfg.get("jpeg_quality", 10))
-        return float(np.clip(1.0 - (q - 10.0) / max(60.0 - 10.0, 1e-6), 0.0, 1.0))
+        q_min = float(exp_cfg.get("jpeg_quality_min", exp_cfg.get("diffjpeg_quality_min", 1)))
+        q_max = float(exp_cfg.get("jpeg_quality_max", exp_cfg.get("diffjpeg_quality_max", 99)))
+        return float(np.clip(1.0 - (q - q_min) / max(q_max - q_min, 1e-6), 0.0, 1.0))
 
     if mode in {"jpeg2000", "jp2", "scope_jpeg2000", "scope_jp2"}:
         r = float(exp_cfg.get("jp2_rate", 32))
@@ -79,8 +81,8 @@ def infer_severity_from_experiment(exp_cfg: Dict) -> float:
 
     if mode in {"bpg", "scope_bpg"}:
         q = float(exp_cfg.get("bpg_qp", exp_cfg.get("bpg_quality", 40)))
-        q_min = float(exp_cfg.get("bpg_qp_min", 28))
-        q_max = float(exp_cfg.get("bpg_qp_max", 48))
+        q_min = float(exp_cfg.get("bpg_qp_min", 0))
+        q_max = float(exp_cfg.get("bpg_qp_max", 51))
         return float(np.clip((q - q_min) / max(q_max - q_min, 1e-6), 0.0, 1.0))
 
     if "bmshj" in codec:

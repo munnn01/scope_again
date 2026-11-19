@@ -50,7 +50,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--severity-levels",
         type=str,
-        default="0.0,0.25,0.5,0.75,1.0",
+        default="0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
         help=(
             "Comma-separated NORMALIZED severity levels in [0, 1] to sample. "
             "0 = mild degradation / high bitrate, 1 = severe degradation / low bitrate. "
@@ -60,7 +60,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--val-severity-levels",
         type=str,
-        default="",
+        default="0.0,0.2,0.4,0.6,0.8,1.0",
         help="Optional validation raw severity levels.",
     )
     p.add_argument(
@@ -127,7 +127,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--diffjpeg-quality-min",
         type=int,
-        default=10,
+        default=1,
         help="JPEG quality at severity=1. Diff-JPEG valid range should be <= 99.",
     )
     p.add_argument(
@@ -223,13 +223,30 @@ def build_argparser() -> argparse.ArgumentParser:
         default=16,
         help="Downsampling factor used by lowres_replace and bg_flat_mode=lowres.",
     )
+    p.add_argument(
+        "--conditioning-mode",
+        type=str,
+        default="family_severity",
+        choices=[
+            "family_severity",
+            "codec_family_only",
+            "family_only",
+            "severity_only",
+            "none",
+            "unconditioned",
+        ],
+        help=(
+            "Conditioning configuration (Table 3): family_severity (full SCOPE), "
+            "codec_family_only, severity_only, or none (unconditioned specialist)."
+        ),
+    )
 
     # Training
     p.add_argument("--epochs", type=int, default=40)
     p.add_argument("--batch", type=int, default=8)
-    p.add_argument("--samples-per-epoch", type=int, default=20000)
+    p.add_argument("--samples-per-epoch", type=int, default=12000)
     p.add_argument("--workers", type=int, default=4)
-    p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--scheduler", type=str, default="cosine", choices=["cosine", "none"])
     p.add_argument("--warmup-epochs", type=int, default=3)
@@ -248,7 +265,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--attn-blur",
         type=int,
-        default=7,
+        default=3,
         help=(
             "Blur/dilation size for attention target built from annotation boxes. "
             "Use a small value to keep attention tight around GT boxes."
@@ -257,10 +274,10 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--det-mask-blur",
         type=int,
-        default=31,
+        default=41,
         help=(
             "Blur/dilation size for detector feature mask built from annotation boxes. "
-            "Usually larger than attn-blur because YOLO features need object context."
+            "Larger than attn-blur because detector FPN features need object context."
         ),
     )
     p.add_argument("--attn-area-mult", type=float, default=1.0)
@@ -268,7 +285,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--lambda-bg-flat",
         type=float,
-        default=0.75,
+        default=0.25,
         help=(
             "Weight for pushing background regions toward a cheap low-frequency/flat target "
             "rather than matching the clean background."
@@ -281,33 +298,33 @@ def build_argparser() -> argparse.ArgumentParser:
         choices=["blur", "lowres", "mean", "zero"],
         help="Cheap target used when lambda-bg-flat > 0.",
     )
-    p.add_argument("--lambda-bg-smooth", type=float, default=1.00)
-    p.add_argument("--lambda-rate", type=float, default=2.00)
+    p.add_argument("--lambda-bg-smooth", type=float, default=0.35)
+    p.add_argument("--lambda-rate", type=float, default=0.50)
     p.add_argument("--lambda-attn", type=float, default=1.00)
-    p.add_argument("--lambda-attn-sparse", type=float, default=0.75)
-    p.add_argument("--lambda-attn-area", type=float, default=2.00)
+    p.add_argument("--lambda-attn-sparse", type=float, default=0.15)
+    p.add_argument("--lambda-attn-area", type=float, default=0.50)
     p.add_argument("--lambda-delta", type=float, default=0.02)
     p.add_argument("--lambda-delta-tv", type=float, default=0.05)
 
     # Severity-dependent dynamic loss weights.
     # At high severity, task/object/FPN loss is upweighted and rate/background
-    # simplification can be downweighted. This is intended to improve q1/q2 AP.
+    # simplification can be downweighted. Disabled (0.0) in the paper setup.
     p.add_argument("--task-severity-gain", type=float, default=0.0)
     p.add_argument("--rate-severity-drop", type=float, default=0.0)
     p.add_argument("--bg-severity-drop", type=float, default=0.0)
-    p.add_argument("--min-rate-mult", type=float, default=0.25)
-    p.add_argument("--min-bg-mult", type=float, default=0.25)
+    p.add_argument("--min-rate-mult", type=float, default=0.50)
+    p.add_argument("--min-bg-mult", type=float, default=0.50)
 
     # Frozen detector feature consistency.
     p.add_argument(
         "--detector-backend",
         type=str,
-        default="yolo",
+        default="detectron2",
         choices=["none", "yolo", "detectron2"],
         help="Detector feature-distillation backend.",
     )
     p.add_argument("--detector-weights", type=str, default="")
-    p.add_argument("--lambda-det", type=float, default=2.0)
+    p.add_argument("--lambda-det", type=float, default=4.0)
     p.add_argument(
         "--detector-hook-layers",
         type=str,
@@ -379,14 +396,14 @@ def build_argparser() -> argparse.ArgumentParser:
     )
 
     # Validation
-    p.add_argument("--val-every", type=int, default=1)
-    p.add_argument("--val-steps", type=int, default=50)
+    p.add_argument("--val-every", type=int, default=5)
+    p.add_argument("--val-steps", type=int, default=24)
 
     # Logging
     p.add_argument(
         "--log-every",
         type=int,
-        default=50,
+        default=25,
         help="Print training progress every N optimizer steps inside each epoch.",
     )
 

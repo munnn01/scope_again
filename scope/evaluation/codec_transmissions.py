@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -37,18 +39,26 @@ def apply_scope_bgr_conditional(
     )
 
     family_name = infer_codec_family_from_experiment(exp_cfg)
-    if family_name not in codec_family_to_id:
+    if model.uses_family_conditioning and family_name not in codec_family_to_id:
         raise ValueError(f"Family {family_name!r} not in checkpoint mapping {codec_family_to_id}")
 
     severity = get_experiment_severity(exp_cfg)
 
     x = bgr_to_model_tensor(img_bgr, torch_device)
-    family_id = torch.tensor(
-        [codec_family_to_id[family_name]],
-        device=torch_device,
-        dtype=torch.long,
+    family_id = (
+        torch.tensor(
+            [codec_family_to_id[family_name]],
+            device=torch_device,
+            dtype=torch.long,
+        )
+        if model.uses_family_conditioning
+        else None
     )
-    severity_t = torch.tensor([severity], device=torch_device, dtype=x.dtype)
+    severity_t = (
+        torch.tensor([severity], device=torch_device, dtype=x.dtype)
+        if model.uses_severity_conditioning
+        else None
+    )
 
     edited, delta_obj, delta_bg, attention, effective_delta = model(
         x,
@@ -80,6 +90,19 @@ def _as_arg_list(x):
     return [str(v) for v in x]
 
 
+def _executable_cmd_prefix(binary: str) -> List[str]:
+    if os.name == "nt":
+        path = Path(binary)
+        if path.is_file() and path.suffix.lower() not in {".exe", ".bat", ".cmd", ".com"}:
+            try:
+                head = path.read_bytes()[:128]
+                if head.startswith(b"#!") and b"python" in head.splitlines()[0].lower():
+                    return [sys.executable, str(path)]
+            except OSError:
+                pass
+    return [str(binary)]
+
+
 def real_bpg_transmission(
     img_bgr,
     bpg_qp: int,
@@ -106,7 +129,7 @@ def real_bpg_transmission(
         if not cv2.imwrite(str(in_png), img_bgr):
             raise RuntimeError(f"Failed to write temporary image: {in_png}")
 
-        enc_cmd = [enc, "-q", str(int(bpg_qp)), *extra_args, "-o", str(out_bpg), str(in_png)]
+        enc_cmd = [*_executable_cmd_prefix(enc), "-q", str(int(bpg_qp)), *extra_args, "-o", str(out_bpg), str(in_png)]
         enc_res = subprocess.run(
             enc_cmd,
             stdout=subprocess.PIPE,
@@ -120,7 +143,7 @@ def real_bpg_transmission(
 
         estimated_bytes = int(out_bpg.stat().st_size)
 
-        dec_cmd = [dec, "-o", str(out_png), str(out_bpg)]
+        dec_cmd = [*_executable_cmd_prefix(dec), "-o", str(out_png), str(out_bpg)]
         dec_res = subprocess.run(
             dec_cmd,
             stdout=subprocess.PIPE,
@@ -176,7 +199,7 @@ def real_jpeg2000_transmission(
             if not cv2.imwrite(str(in_png), img_bgr):
                 raise RuntimeError(f"Failed to write temporary image: {in_png}")
 
-            cmd = [enc, "-i", str(in_png), "-o", str(out_jp2)]
+            cmd = [*_executable_cmd_prefix(enc), "-i", str(in_png), "-o", str(out_jp2)]
             if jp2_rate is not None:
                 cmd += ["-r", str(float(jp2_rate))]
             cmd += extra_args
@@ -194,7 +217,7 @@ def real_jpeg2000_transmission(
 
             estimated_bytes = int(out_jp2.stat().st_size)
 
-            dec_cmd = [dec, "-i", str(out_jp2), "-o", str(out_png)]
+            dec_cmd = [*_executable_cmd_prefix(dec), "-i", str(out_jp2), "-o", str(out_png)]
             dec_res = subprocess.run(
                 dec_cmd,
                 stdout=subprocess.PIPE,

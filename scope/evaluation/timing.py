@@ -84,7 +84,7 @@ def apply_scope_timed(
     )
 
     family_name = infer_codec_family_from_experiment(exp_cfg)
-    if family_name not in codec_family_to_id:
+    if model.uses_family_conditioning and family_name not in codec_family_to_id:
         raise ValueError(
             f"Family {family_name!r} not in checkpoint mapping {codec_family_to_id}. "
             f"For unseen JP2 ablation, condition with diff_jpeg, bmshj, or bpg_like."
@@ -95,12 +95,20 @@ def apply_scope_timed(
     t0 = now()
 
     x = bgr_to_model_tensor(img_bgr, torch_device)
-    family_id = torch.tensor(
-        [codec_family_to_id[family_name]],
-        device=torch_device,
-        dtype=torch.long,
+    family_id = (
+        torch.tensor(
+            [codec_family_to_id[family_name]],
+            device=torch_device,
+            dtype=torch.long,
+        )
+        if model.uses_family_conditioning
+        else None
     )
-    severity_t = torch.tensor([severity], device=torch_device, dtype=x.dtype)
+    severity_t = (
+        torch.tensor([severity], device=torch_device, dtype=x.dtype)
+        if model.uses_severity_conditioning
+        else None
+    )
 
     sync_if_cuda(torch_device)
     t1 = now()

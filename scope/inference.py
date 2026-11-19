@@ -8,13 +8,14 @@ import cv2
 import numpy as np
 import torch
 
-from .model import SCOPE
+from .model import SCOPE, normalize_conditioning_mode
 
 
 _MODEL_CACHE = {}
 _ARCH_FIELDS = (
     "base_ch", "family_emb_dim", "cond_dim", "max_delta_obj", "max_delta_bg",
     "attention_bias", "bg_mode", "bg_blur_kernel", "bg_lowres_scale",
+    "conditioning_mode",
 )
 _DEFAULTS = {
     "base_ch": 48, "family_emb_dim": 8, "cond_dim": 64,
@@ -22,6 +23,30 @@ _DEFAULTS = {
     "attention_bias": -4.0, "bg_mode": "blur_replace",
     "bg_blur_kernel": 51, "bg_lowres_scale": 16,
 }
+
+
+def _infer_conditioning_mode(
+    state: dict[str, Any],
+    checkpoint: dict[str, Any],
+    args: dict[str, Any],
+    family_emb_dim: int,
+    exp_cfg: dict[str, Any],
+) -> str:
+    if "conditioning_mode" in exp_cfg:
+        return normalize_conditioning_mode(exp_cfg["conditioning_mode"])
+
+    ckpt_mode = checkpoint.get("conditioning_mode") or args.get("conditioning_mode")
+    if ckpt_mode:
+        return normalize_conditioning_mode(ckpt_mode)
+
+    if "cond_mlp.0.weight" not in state:
+        return "none"
+    if "family_emb.weight" not in state:
+        return "severity_only"
+    cond_in_dim = int(state["cond_mlp.0.weight"].shape[1])
+    if cond_in_dim == int(family_emb_dim):
+        return "codec_family_only"
+    return "family_severity"
 
 
 def load_scope_model(ckpt_path: str, device: torch.device, exp_cfg: dict | None = None):
@@ -43,12 +68,20 @@ def load_scope_model(ckpt_path: str, device: torch.device, exp_cfg: dict | None 
     if not isinstance(args, dict):
         args = vars(args)
 
-    config = {name: exp_cfg.get(name, checkpoint.get(name, args.get(name, default)))
-              for name, default in _DEFAULTS.items()}
-    model = SCOPE(num_codec_families=len(mapping), **config)
     state = checkpoint["model"]
     if any(name.startswith("module.") for name in state):
         state = {name.removeprefix("module."): value for name, value in state.items()}
+
+    config = {name: exp_cfg.get(name, checkpoint.get(name, args.get(name, default)))
+              for name, default in _DEFAULTS.items()}
+    config["conditioning_mode"] = _infer_conditioning_mode(
+        state=state,
+        checkpoint=checkpoint,
+        args=args,
+        family_emb_dim=int(config["family_emb_dim"]),
+        exp_cfg=exp_cfg,
+    )
+    model = SCOPE(num_codec_families=len(mapping), **config)
     model.load_state_dict(state, strict=True)
     model.to(device).eval()
     _MODEL_CACHE[key] = (model, mapping)
@@ -66,7 +99,7 @@ def apply_scope_bgr(
 ) -> np.ndarray:
     torch_device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     model, codec_family_to_id = load_scope_model(scope_ckpt, torch_device, exp_cfg)
-    if codec_family not in codec_family_to_id:
+    if model.uses_family_conditioning and codec_family not in codec_family_to_id:
         raise ValueError(f"Codec family {codec_family!r} not in {list(codec_family_to_id)}")
     if not 0 <= severity <= 1:
         raise ValueError("severity must be between 0 and 1")
@@ -74,8 +107,16 @@ def apply_scope_bgr(
     x = torch.from_numpy(rgb.copy()).permute(2, 0, 1).unsqueeze(0).to(
         torch_device, dtype=torch.float32
     ) / 255.0
-    family = torch.tensor([codec_family_to_id[codec_family]], device=torch_device)
-    sev = torch.tensor([severity], device=torch_device, dtype=x.dtype)
+    family = (
+        torch.tensor([codec_family_to_id[codec_family]], device=torch_device)
+        if model.uses_family_conditioning
+        else None
+    )
+    sev = (
+        torch.tensor([severity], device=torch_device, dtype=x.dtype)
+        if model.uses_severity_conditioning
+        else None
+    )
     edited, *_ = model(x, severity=sev, codec_family=family)
     result = (edited[0].clamp(0, 1).permute(1, 2, 0).cpu().numpy() * 255).round().astype(np.uint8)
     return cv2.cvtColor(result, cv2.COLOR_RGB2BGR)

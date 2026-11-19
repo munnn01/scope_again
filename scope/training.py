@@ -398,7 +398,7 @@ def load_model_init_checkpoint(model: nn.Module, ckpt_path: str, device: torch.d
         return
 
     print(f"Loading initial SCOPE checkpoint: {ckpt_path}")
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     state = ckpt.get("model", ckpt) if isinstance(ckpt, dict) else ckpt
     if any(k.startswith("module.") for k in state.keys()):
         state = {k.replace("module.", "", 1): v for k, v in state.items()}
@@ -437,6 +437,7 @@ def save_checkpoint(
         "global_step": global_step,
         "best_score": best_score,
         "codec_family_to_id": codec_family_to_id,
+        "conditioning_mode": getattr(model, "conditioning_mode", "family_severity"),
         "severity_min": float(args.severity_min),
         "severity_max": float(args.severity_max),
         "invert_severity": bool(args.invert_severity),
@@ -518,22 +519,25 @@ def print_and_assert_critical_config(args: argparse.Namespace) -> None:
     expected_float = {
         "object_crop_prob": 0.60,
         "crop_margin": 4.0,
+        "bg_blur_kernel": 51,
         "attn_blur": 3,
-        "det_mask_blur": 31,
+        "det_mask_blur": 41,
         "attn_area_mult": 1.0,
-        "lambda_bg_flat": 0.75,
-        "lambda_bg_smooth": 1.0,
-        "lambda_rate": 2.0,
-        "lambda_attn": 1.0,
-        "lambda_attn_sparse": 0.75,
-        "lambda_attn_area": 2.0,
+        "lambda_bg_flat": 0.25,
+        "lambda_bg_smooth": 0.35,
+        "lambda_rate": 0.50,
+        "lambda_attn": 1.00,
+        "lambda_attn_sparse": 0.15,
+        "lambda_attn_area": 0.50,
         "lambda_delta": 0.02,
         "lambda_delta_tv": 0.05,
-        "lambda_det": 2.0,
+        "lambda_det": 4.0,
+        "lr": 1e-4,
     }
     expected_str = {
         "bg_mode": "blur_replace",
         "bg_flat_mode": "blur",
+        "detector_backend": "detectron2",
     }
 
     for k, exp in expected_float.items():
@@ -678,6 +682,7 @@ def train(args: argparse.Namespace) -> None:
         bg_mode=args.bg_mode,
         bg_blur_kernel=args.bg_blur_kernel,
         bg_lowres_scale=args.bg_lowres_scale,
+        conditioning_mode=getattr(args, "conditioning_mode", "family_severity"),
     ).to(device)
 
     load_model_init_checkpoint(model, args.init_checkpoint, device)
@@ -859,7 +864,7 @@ def train(args: argparse.Namespace) -> None:
         has_val = "val_loss" in val_metrics
         score = val_metrics["val_loss"] if has_val else train_metrics["loss"]
 
-        is_best = bool(has_val and score < best_score)
+        is_best = bool((has_val or val_loader is None) and score < best_score)
         if is_best:
             best_score = score
 
@@ -891,9 +896,9 @@ def train(args: argparse.Namespace) -> None:
         )
 
         if is_best:
-            # Keep the old filename for compatibility with existing eval scripts,
-            # and also save an explicit validation-best name.
-            for best_name in ["best_loss.pt", "best_val.pt"]:
+            # Save best_val.pt strictly when validation ran; save best_loss.pt always on improvement.
+            best_names = ["best_loss.pt", "best_val.pt"] if has_val else ["best_loss.pt"]
+            for best_name in best_names:
                 save_checkpoint(
                     output_dir / best_name,
                     model=model,

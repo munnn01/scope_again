@@ -9,8 +9,9 @@ Silvia Dani, Leonardo Galteri, Marco Bertini
 
 The pre-editor learns to **protect object-relevant information** while simplifying less important background content, making images easier to compress without sacrificing the visual cues needed for detection.
 
-> 📄 **Paper:** Proceedings link will be added once available.  
+> 📄 **Paper (ACCV 2026):** [arXiv:2610.39778](https://arxiv.org/abs/2610.39778)  
 > 🧠 **Pretrained weights (full model + ablations):** [Google Drive](https://drive.google.com/drive/folders/1YbB1M0Bdp1QZl-aoGNWCCsJRMgzROGES?usp=sharing)  
+> 🔎 **Paper parameter verification & Colab:** [docs/PAPER_VERIFICATION.md](docs/PAPER_VERIFICATION.md) · [notebooks/SCOPE_Colab.ipynb](notebooks/SCOPE_Colab.ipynb)  
 
 ## ✨ Highlights
 
@@ -116,8 +117,8 @@ The top-level `training/`, `evaluation/`, and `analysis/` files provide **direct
 **Python 3.10** and a Linux system with an NVIDIA GPU are recommended for reproducing the paper. Install all regular Python dependencies from **`requirements.txt`**; no Conda environment YAML is needed. The requirements pin PyTorch 2.4.1 and TorchVision 0.19.1 and include the CUDA 12.1 wheel index used by the original environment. Confirm that your NVIDIA driver supports this CUDA runtime.
 
 ```bash
-git clone https://github.com/SilviaDani/SCOPE.git
-cd SCOPE
+git clone https://github.com/munnn01/scope_again.git
+cd scope_again
 
 # Create an isolated Python environment
 python3.10 -m venv .venv
@@ -126,6 +127,9 @@ pip install --upgrade pip setuptools wheel
 
 # All standard Python dependencies, including PyTorch and Diff-JPEG
 pip install -r requirements.txt
+
+# On Google Colab (keep preinstalled CUDA PyTorch/TorchVision):
+# pip install -r requirements-colab.txt
 
 # Detectron2: install after PyTorch because it builds native extensions
 pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'
@@ -179,7 +183,7 @@ models/
 runs/preedit_d2fpn_nojp2_unbiased_linearsev_mediumbpg_sevbasis_scratch_FULL_20260701_140557/best_val.pt
 ```
 
-All shipped evaluation YAMLs use that checkpoint by default. If your weights are stored elsewhere, change `scope_common.scope_ckpt` in the relevant YAML. For an ablation, copy the YAML and update **both** `scope_common.scope_ckpt` and `output_dir`; verify its model architecture and conditioning inputs. Changing `condition_mode` alone does not implement family-only or severity-only inference. See [📖 Choosing weights and configurations](docs/PIPELINE.md#choosing-weights-and-configurations) and the [✅ full download/setup walkthrough](docs/TESTING.md).
+All shipped evaluation YAMLs use that checkpoint by default. If your weights are stored elsewhere, change `scope_common.scope_ckpt` in the relevant YAML. For an ablation, copy the YAML and update **both** `scope_common.scope_ckpt` and `output_dir`; `load_scope_model` automatically detects the checkpoint's conditioning mode (`family_severity`, `codec_family_only`, `severity_only`, or `none`). See [📖 Choosing weights and configurations](docs/PIPELINE.md#choosing-weights-and-configurations), [🔎 Paper parameter verification](docs/PAPER_VERIFICATION.md), and the [✅ full download/setup walkthrough](docs/TESTING.md).
 
 ## 🚀 Train from scratch
 
@@ -280,6 +284,8 @@ The full audit also requires optional runtime dependencies (such as Detectron2, 
 
 ## 📚 Documentation
 
+- 🔎 [Paper parameter & architecture verification](docs/PAPER_VERIFICATION.md)
+- 📓 [Google Colab notebook](notebooks/SCOPE_Colab.ipynb)
 - 📖 [Full pipeline and code reference](docs/PIPELINE.md)
 - ✅ [Reproducing the experiments](docs/TESTING.md)
-- 📄 **Paper:** Official proceedings link coming soon.
+- 📄 **Paper:** [arXiv:2610.39778](https://arxiv.org/abs/2610.39778) (ACCV 2026)

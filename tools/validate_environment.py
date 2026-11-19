@@ -97,7 +97,17 @@ def find_executable(value: str, root: Path = PROJECT_ROOT) -> str | None:
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
         return None
-    return shutil.which(expanded)
+    located = shutil.which(expanded)
+    if located is not None:
+        return located
+    if os.name == "nt":
+        for entry in os.environ.get("PATH", "").split(os.pathsep):
+            if not entry:
+                continue
+            candidate = Path(entry) / expanded
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+    return None
 
 
 def check_executable(report: Reporter, label: str, value: str) -> None:
@@ -110,7 +120,7 @@ def check_executable(report: Reporter, label: str, value: str) -> None:
 
 def check_structure(report: Reporter) -> None:
     mandatory = (
-        "README.md", "requirements.txt", "environment.yml", "scope/__init__.py",
+        "README.md", "requirements.txt", "scope/__init__.py",
         "scope/train_scope.py", "training/train_scope.py", "training/train_scope.sh", "scope/training.py", "scope/model.py",
         "scope/data.py", "scope/codecs.py", "scope/conditioning.py", "scope/losses.py",
         "scope/teachers.py", "scope/inference.py", "scope/evaluation/evaluate.py",
