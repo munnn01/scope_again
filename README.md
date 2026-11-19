@@ -11,7 +11,7 @@ The pre-editor learns to **protect object-relevant information** while simplifyi
 
 > 📄 **Paper (ACCV 2026):** [arXiv:2610.39778](https://arxiv.org/abs/2610.39778)  
 > 🧠 **Pretrained weights (full model + ablations):** [Google Drive](https://drive.google.com/drive/folders/1YbB1M0Bdp1QZl-aoGNWCCsJRMgzROGES?usp=sharing)  
-> 🔎 **Paper parameter verification & Colab:** [docs/PAPER_VERIFICATION.md](docs/PAPER_VERIFICATION.md) · [notebooks/SCOPE_Colab.ipynb](notebooks/SCOPE_Colab.ipynb)  
+> 🔎 **Paper parameter verification & Colab:** [docs/PAPER_VERIFICATION.md](docs/PAPER_VERIFICATION.md) · [notebooks/SCOPE_Colab.ipynb](notebooks/SCOPE_Colab.ipynb) · [Open in Google Colab](https://colab.research.google.com/github/munnn01/scope_again/blob/main/notebooks/SCOPE_Colab.ipynb)  
 
 ## ✨ Highlights
 
@@ -133,7 +133,7 @@ pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
 # On Google Colab / Colab+ (keep preinstalled CUDA PyTorch/TorchVision & NumPy 2.x ABI):
-# pip install -r requirements-colab.txt && pip install --no-deps compressai==1.2.8
+# pip install -r requirements-colab.txt && pip install --no-build-isolation --no-deps compressai==1.2.8
 
 # Detectron2: install after PyTorch because it builds native extensions
 pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'

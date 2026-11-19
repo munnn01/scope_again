@@ -26,7 +26,7 @@ Strict checks validate module imports, direct CLI paths, each selected model's c
 
 ## 📦 1. Install Python dependencies
 
-Use Python 3.10 on Linux with a compatible NVIDIA driver for standalone reproduction (`requirements.txt`), or `requirements-colab.txt` + `pip install --no-deps compressai==1.2.8` on Google Colab / Colab+ to keep Colab's preinstalled CUDA PyTorch/TorchVision and NumPy 2.x ABI intact.
+Use Python 3.10 on Linux with a compatible NVIDIA driver for standalone reproduction (`requirements.txt`), or `requirements-colab.txt` + `pip install --no-build-isolation --no-deps compressai==1.2.8` on Google Colab / Colab+ to keep Colab's preinstalled CUDA PyTorch/TorchVision and NumPy 2.x ABI intact.
 
 ```bash
 git clone https://github.com/munnn01/scope_again.git
@@ -37,7 +37,7 @@ pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
 # On Google Colab / Colab+ instead of creating a venv / requirements.txt:
-# pip install -r requirements-colab.txt && pip install --no-deps compressai==1.2.8
+# pip install -r requirements-colab.txt && pip install --no-build-isolation --no-deps compressai==1.2.8
 
 # Build Detectron2 against the installed PyTorch/CUDA stack
 pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'
@@ -68,7 +68,7 @@ Install BPG from [Fabrice Bellard's distribution](https://www.bellard.org/bpg/) 
 
 ## 🗂️ 2. Download COCO 2017 and detectors
 
-Download **three official COCO files**: [`train2017.zip`](https://images.cocodataset.org/zips/train2017.zip), [`val2017.zip`](https://images.cocodataset.org/zips/val2017.zip), and [`annotations_trainval2017.zip`](https://images.cocodataset.org/annotations/annotations_trainval2017.zip). Extract the images and the two **instance annotation** files. The default repository layout is:
+Download **three official COCO files**: [`train2017.zip`](http://images.cocodataset.org/zips/train2017.zip), [`val2017.zip`](http://images.cocodataset.org/zips/val2017.zip), and [`annotations_trainval2017.zip`](http://images.cocodataset.org/annotations/annotations_trainval2017.zip). Extract the images and the two **instance annotation** files. The default repository layout is:
 
 ```text
 datasets/coco-2017/

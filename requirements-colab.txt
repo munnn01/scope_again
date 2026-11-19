@@ -3,7 +3,7 @@
 #
 # Install on Colab with:
 #   pip install -r requirements-colab.txt
-#   pip install --no-deps compressai==1.2.8
+#   pip install --no-build-isolation --no-deps compressai==1.2.8
 #
 # Why `--no-deps` for CompressAI 1.2.8?
 # CompressAI 1.2.8 declares a legacy `numpy<2.0` cap on PyPI even though its PyTorch
@@ -45,16 +45,17 @@ yacs>=0.1.8
 tabulate
 gdown
 
-# Build helpers (for CompressAI sdist on Python 3.13+ and Detectron2 native extensions)
+# Build helpers (for CompressAI sdist on Python 3.13+, BPG/x265, and Detectron2 native extensions)
+# Bound cmake<4.0: matches Colab's preinstalled cmake 3.31.x and preserves CMake <3.5 policy compatibility.
 ninja
-cmake
+cmake<4.0
 cython
 
 # Differentiable JPEG training proxy
 git+https://github.com/necla-ml/Diff-JPEG.git
 
 # Install CompressAI right after (without triggering its legacy `numpy<2.0` metadata cap):
-#   pip install --no-deps compressai==1.2.8
+#   pip install --no-build-isolation --no-deps compressai==1.2.8
 #
 # Optional (install in a separate cell on Colab when needed):
 #   pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'

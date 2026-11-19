@@ -434,20 +434,36 @@ class EvaluationToolsAndColabWorkflowTests(unittest.TestCase):
         self.assertEqual(captured["limit"], 20)
         self.assertEqual(captured["exp_names"], ["jpeg_q10", "scope_jpeg_q10", "bmshj_q1"])
 
-        # 4) Validate notebooks/SCOPE_Colab.ipynb JSON and referenced repo scripts
+        # 4) Validate notebooks/SCOPE_Colab.ipynb JSON, Python AST, and referenced repo scripts
+        import ast
         nb = json.loads((ROOT / "notebooks/SCOPE_Colab.ipynb").read_text(encoding="utf-8"))
         self.assertEqual(nb["nbformat"], 4)
         cmd_pat = re.compile(r"!\s*(?:python|bash)\s+((?:training|evaluation|analysis|tools)/[\w./-]+\.(?:py|sh))")
         found_cmds = []
         nb_full_source = "\n".join("".join(cell.get("source", [])) for cell in nb["cells"])
-        for cell in nb["cells"]:
+        for idx, cell in enumerate(nb["cells"]):
             text = "".join(cell.get("source", []))
             for rel_script in cmd_pat.findall(text):
                 self.assertTrue((ROOT / rel_script).is_file(), f"Missing Colab script: {rel_script}")
                 found_cmds.append(rel_script)
+            if cell.get("cell_type") == "code":
+                py_lines = [
+                    (ln[: len(ln) - len(ln.lstrip())] + "pass") if ln.lstrip().startswith(("!", "%")) else ln
+                    for ln in text.splitlines()
+                ]
+                ast.parse("\n".join(py_lines), filename=f"SCOPE_Colab.ipynb#cell-{idx}")
         self.assertGreaterEqual(len(found_cmds), 4)
         self.assertIn("requirements-colab.txt", nb_full_source)
-        self.assertRegex(nb_full_source, r"pip\s+install[^\n]*--no-deps\s+compressai==1\.2\.8")
+        self.assertRegex(
+            nb_full_source,
+            r"pip\s+install[^\n]*--no-build-isolation\s+--no-deps\s+compressai==1\.2\.8",
+        )
+        # BPG source build must stay in /tmp and patch GCC 11+ C++17 `register` + CMake 4 OLD policies
+        self.assertIn("/tmp/libbpg_build", nb_full_source)
+        self.assertIn("-DCMAKE_CXX_STANDARD=14", nb_full_source)
+        self.assertIn("md5.cpp", nb_full_source)
+        self.assertIn("unzip -q -o", nb_full_source)
+        self.assertNotIn("https://images.cocodataset.org/", nb_full_source)
 
     def test_dependency_manifests_prevent_numpy_and_torch_abi_conflicts(self):
         import re
@@ -481,6 +497,7 @@ class EvaluationToolsAndColabWorkflowTests(unittest.TestCase):
         self.assertIn("<0.1.6", req["fvcore"])
         self.assertIn("<0.1.10", req["iopath"])
         self.assertIn("<2.4.0", req["omegaconf"])
+        self.assertIn("<4.0", req["cmake"])
         self.assertIn("git+https://github.com/necla-ml/Diff-JPEG.git", req_git)
 
         # Google Colab+ manifest (`requirements-colab.txt`): preserve CUDA Torch & NumPy 2.x ABI
@@ -497,11 +514,15 @@ class EvaluationToolsAndColabWorkflowTests(unittest.TestCase):
         self.assertIn("<0.1.6", colab["fvcore"])
         self.assertIn("<0.1.10", colab["iopath"])
         self.assertIn("<2.4.0", colab["omegaconf"])
+        self.assertIn("<4.0", colab["cmake"])
         self.assertIn("git+https://github.com/necla-ml/Diff-JPEG.git", colab_git)
 
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("requirements-colab.txt", readme)
-        self.assertIn("--no-deps compressai==1.2.8", readme)
+        self.assertIn("--no-build-isolation --no-deps compressai==1.2.8", readme)
+
+        testing_doc = (ROOT / "docs/TESTING.md").read_text(encoding="utf-8")
+        self.assertNotIn("https://images.cocodataset.org/", testing_doc)
 
 
 if __name__ == "__main__":

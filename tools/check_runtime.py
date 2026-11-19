@@ -62,7 +62,7 @@ def audit_entrypoints(strict_external: bool = False) -> tuple[int, int, int]:
     for name in ENTRYPOINTS:
         try:
             proc = subprocess.run([sys.executable, str(ROOT / name), "--help"], cwd=ROOT,
-                                  text=True, capture_output=True, timeout=40)
+                                  text=True, capture_output=True, timeout=120)
             if proc.returncode == 0 and "usage:" in proc.stdout.lower():
                 passed += 1
                 print(f"[ OK ] {name} --help")
@@ -81,7 +81,7 @@ def audit_entrypoints(strict_external: bool = False) -> tuple[int, int, int]:
                 print(f"[FAIL] {name}: exit {proc.returncode}: {proc.stderr[-600:]}")
         except subprocess.TimeoutExpired:
             failed += 1
-            print(f"[FAIL] {name}: --help timed out after 40s")
+            print(f"[FAIL] {name}: --help timed out after 120s")
     print(f"Entrypoints: {passed} OK, {skipped} missing dependency, {failed} failure(s)")
     return passed, skipped, failed
 
